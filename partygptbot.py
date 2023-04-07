@@ -94,6 +94,22 @@ def handle_app_mention(body, say):
     # Send the reply to the Slack channel
     say(chatgpt_response)
 
+@app.command("/reset_history")
+def reset_history(ack, respond, command):
+    # Acknowledge the command request
+    ack()
+
+    # Delete the conversation history for the channel from the database
+    conn = sqlite3.connect("conversation_history.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM conversation_history")
+    conn.commit()
+    conn.close()
+
+    # Respond with a confirmation message
+    response_text = "Conversation history has been reset."
+    respond(text=response_text)
+
 def init_db():
     conn = sqlite3.connect("conversation_history.db")
     cursor = conn.cursor()
@@ -123,6 +139,11 @@ def slack_events():
         return response 
 
     # Handle other Slack events
+    return handler.handle(request)
+
+# Handle /reset_history
+@flask_app.route("/slack/reset_history",methods=["POST"])
+def slack_reset_history():
     return handler.handle(request)
 
 if __name__ == "__main__":
