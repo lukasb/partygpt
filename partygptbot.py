@@ -1,5 +1,6 @@
 import os
 import sys
+import openai
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_sdk import WebClient
@@ -11,6 +12,10 @@ app = App(signing_secret=os.environ["SLACK_SIGNING_SECRET"])
 
 # Your bot's Slack API token
 SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
+
+# Set up the OpenAI client 
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+openai.api_key = OPENAI_API_KEY
 
 # Initialize the Slack WebClient
 client = WebClient(token=SLACK_BOT_TOKEN)
@@ -27,9 +32,29 @@ def handle_app_mention(body, say):
         print(f"Error: {e}")
         user_name = "User"
 
-    # Respond with a greeting
-    response = f"Hello, {user_name}! :wave:"
-    say(response)
+    # Get the message text
+    message_text = body["event"]["text"]
+
+    # Send the message to ChatGPT
+    try:
+        gpt_response = openai.Completion.create(
+            engine="text-davinci-002",
+            prompt=f"{user_name}: {message_text}\nAI:",
+            max_tokens=50,
+            n=1,
+            stop=None,
+            temperature=0.5,
+        )
+
+        # Extract the generated response
+        chatgpt_response = gpt_response.choices[0].text.strip()
+
+    except Exception as e:
+        print(f"Error: {e}")
+        chatgpt_response = "I'm sorry, I couldn't process your message."
+
+    # Send the reply to the Slack channel
+    say(chatgpt_response)
 
 # Initialize the Flask app
 flask_app = Flask(__name__)
