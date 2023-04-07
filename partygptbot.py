@@ -108,7 +108,10 @@ def reset_history(ack, respond, command):
 
     # Respond with a confirmation message
     response_text = "Conversation history has been reset."
-    respond(text=response_text)
+    try:
+        respond(response_type="in_channel", text=response_text)
+    except Exception as e:
+        print(f"Error sending response: {e}")
 
 def init_db():
     conn = sqlite3.connect("conversation_history.db")
