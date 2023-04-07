@@ -20,7 +20,9 @@ openai.api_key = OPENAI_API_KEY
 # Initialize the Slack WebClient
 client = WebClient(token=SLACK_BOT_TOKEN)
 
-# Listen for app_mention events
+# A list to store the conversation history
+conversation_history = []
+
 @app.event("app_mention")
 def handle_app_mention(body, say):
     # Get user information
@@ -35,11 +37,17 @@ def handle_app_mention(body, say):
     # Get the message text
     message_text = body["event"]["text"]
 
+    # Add the user's message to the conversation history
+    conversation_history.append(f"{user_name}: {message_text}")
+
+    # Generate the prompt with the conversation history
+    prompt = "\n".join(conversation_history) + "\nAI:"
+
     # Send the message to ChatGPT
     try:
         gpt_response = openai.Completion.create(
             engine="text-davinci-002",
-            prompt=f"{user_name}: {message_text}\nAI:",
+            prompt=prompt,
             max_tokens=50,
             n=1,
             stop=None,
@@ -52,6 +60,9 @@ def handle_app_mention(body, say):
     except Exception as e:
         print(f"Error: {e}")
         chatgpt_response = "I'm sorry, I couldn't process your message."
+
+    # Add the AI response to the conversation history
+    conversation_history.append(f"AI: {chatgpt_response}")
 
     # Send the reply to the Slack channel
     say(chatgpt_response)
