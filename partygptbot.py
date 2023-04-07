@@ -1,6 +1,8 @@
 import os
 import sys
 import openai
+import sqlite3
+import re
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_sdk import WebClient
@@ -20,9 +22,6 @@ openai.api_key = OPENAI_API_KEY
 # Initialize the Slack WebClient
 client = WebClient(token=SLACK_BOT_TOKEN)
 
-# A list to store the conversation history
-conversation_history = []
-
 @app.event("app_mention")
 def handle_app_mention(body, say):
     # Get user information
@@ -34,14 +33,35 @@ def handle_app_mention(body, say):
         print(f"Error: {e}")
         user_name = "User"
 
+   # Get the bot user ID
+    try:
+        auth_info = client.auth_test()
+        bot_user_id = auth_info["user_id"]
+    except SlackApiError as e:
+        print(f"Error: {e}")
+        bot_user_id = None
+
     # Get the message text
     message_text = body["event"]["text"]
+    if bot_user_id:
+        message_text = re.sub(f"<@{bot_user_id}>", "", message_text).strip()
 
-    # Add the user's message to the conversation history
-    conversation_history.append(f"{user_name}: {message_text}")
+    # Save the user's message to the database
+    conn = sqlite3.connect("conversation_history.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO conversation_history (speaker, message) VALUES (?, ?)",
+        (user_name, message_text),
+    )
+    conn.commit()
+
+    # Retrieve the conversation history from the database
+    cursor.execute("SELECT speaker, message FROM conversation_history")
+    conversation_history = cursor.fetchall()
+    conn.close()
 
     # Generate the prompt with the conversation history
-    prompt = "\n".join(conversation_history) + "\nAI:"
+    prompt = "\n".join([f"{speaker}: {message}" for speaker, message in conversation_history]) + "\nAI:"
 
     # Send the message to ChatGPT
     try:
@@ -61,11 +81,33 @@ def handle_app_mention(body, say):
         print(f"Error: {e}")
         chatgpt_response = "I'm sorry, I couldn't process your message."
 
-    # Add the AI response to the conversation history
-    conversation_history.append(f"AI: {chatgpt_response}")
+    # Save the AI response to the database
+    conn = sqlite3.connect("conversation_history.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO conversation_history (speaker, message) VALUES (?, ?)",
+        ("AI", chatgpt_response),
+    )
+    conn.commit()
+    conn.close()
 
     # Send the reply to the Slack channel
     say(chatgpt_response)
+
+def init_db():
+    conn = sqlite3.connect("conversation_history.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS conversation_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            speaker TEXT NOT NULL,
+            message TEXT NOT NULL
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
 
 # Initialize the Flask app
 flask_app = Flask(__name__)
@@ -85,4 +127,5 @@ def slack_events():
 
 if __name__ == "__main__":
     # Start the Flask app
+    init_db()
     flask_app.run(host="0.0.0.0", port=8080)
