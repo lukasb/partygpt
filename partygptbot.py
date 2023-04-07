@@ -33,7 +33,7 @@ def handle_app_mention(body, say):
         print(f"Error: {e}")
         user_name = "User"
 
-   # Get the bot user ID
+    # Get the bot user ID
     try:
         auth_info = client.auth_test()
         bot_user_id = auth_info["user_id"]
@@ -60,22 +60,26 @@ def handle_app_mention(body, say):
     conversation_history = cursor.fetchall()
     conn.close()
 
-    # Generate the prompt with the conversation history
-    prompt = "\n".join([f"{speaker}: {message}" for speaker, message in conversation_history]) + "\nAI:"
+    # Compose the messages for gpt-3.5-turbo
+    messages = [{"role": "system", "content": "You are an AI trained by OpenAI. You have a fun, freewheeling, party-on vibe!"}]
+    for speaker, message in conversation_history:
+        messages.append({"role": speaker.lower(), "content": message})
+
+    messages.append({"role": "user", "content": message_text})
 
     # Send the message to ChatGPT
     try:
-        gpt_response = openai.Completion.create(
-            engine="text-davinci-002",
-            prompt=prompt,
-            max_tokens=50,
+        gpt_response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=200,
             n=1,
             stop=None,
-            temperature=0.5,
+            temperature=0.7,  # Increase the temperature for a more creative and varied output
         )
 
         # Extract the generated response
-        chatgpt_response = gpt_response.choices[0].text.strip()
+        chatgpt_response = gpt_response.choices[0].message["content"].strip()
 
     except Exception as e:
         print(f"Error: {e}")
