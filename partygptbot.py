@@ -63,7 +63,8 @@ def handle_app_mention(body, say):
     # Compose the messages for gpt-3.5-turbo
     messages = [{"role": "system", "content": "You are an AI trained by OpenAI. You have a fun, freewheeling, party-on vibe!"}]
     for speaker, message in conversation_history:
-        messages.append({"role": speaker.lower(), "content": message})
+        role = "user" if speaker == user_name else "assistant"
+        messages.append({"role": role, "content": message})
 
     messages.append({"role": "user", "content": message_text})
 
