@@ -3,6 +3,7 @@ import sys
 import openai
 import sqlite3
 import re
+import tiktoken
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_sdk import WebClient
@@ -22,8 +23,17 @@ openai.api_key = OPENAI_API_KEY
 # Initialize the Slack WebClient
 client = WebClient(token=SLACK_BOT_TOKEN)
 
+def count_tokens(string: str, model_name: str) -> int:
+    """Returns the number of tokens in a text string."""
+    encoding = tiktoken.encoding_for_model(model_name)
+    num_tokens = len(encoding.encode(string))
+    return num_tokens
+
 @app.event("app_mention")
 def handle_app_mention(body, say):
+    model_name = "gpt-3.5-turbo"
+    system_message = "You are talking to an AI trained by OpenAI. It has a fun, freewheeling, party-on vibe!"
+    
     # Get user information
     user = body["event"]["user"]
     try:
@@ -46,6 +56,14 @@ def handle_app_mention(body, say):
     if bot_user_id:
         message_text = re.sub(f"<@{bot_user_id}>", "", message_text).strip()
 
+     # Check if the user's message and system message together fit within the token limit
+    user_message_tokens = count_tokens(message_text, model_name)
+    system_message_tokens = count_tokens(system_message, model_name)
+    
+    if user_message_tokens + system_message_tokens >= 4096:
+        say("Your message is too long. Please send a shorter message.")
+        return
+
     # Save the user's message to the database
     conn = sqlite3.connect("conversation_history.db")
     cursor = conn.cursor()
@@ -60,6 +78,15 @@ def handle_app_mention(body, say):
     conversation_history = cursor.fetchall()
     conn.close()
 
+    # Remove the oldest messages from the conversation history until the total tokens fit within the limit
+    total_tokens = system_message_tokens
+    while conversation_history:
+        oldest_message_tokens = count_tokens(conversation_history[0][1], model_name)
+        if total_tokens + oldest_message_tokens + user_message_tokens < 4096:
+            break
+        total_tokens -= oldest_message_tokens
+        conversation_history.pop(0)
+ 
     # Compose the messages for gpt-3.5-turbo
     messages = [{"role": "system", "content": "You are an AI trained by OpenAI. You have a fun, freewheeling, party-on vibe!"}]
     for speaker, message in conversation_history:
@@ -71,7 +98,7 @@ def handle_app_mention(body, say):
     # Send the message to ChatGPT
     try:
         gpt_response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model=model_name,
             messages=messages,
             max_tokens=200,
             n=1,
